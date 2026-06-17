@@ -44,7 +44,7 @@ for s in noto noto-mono twemoji openmoji emojitwo blobmoji tossface \
   "$DIR/../emojiswap" download "$s" >/dev/null 2>&1 || true   # best-effort; skips ones not yet released
 done
 rm -rf "$APP/Contents/Resources/preview"; mkdir -p "$APP/Contents/Resources/preview"
-swift "$DIR/genpreviews.swift" "$APP/Contents/Resources/preview" || true
+swift "$DIR/genpreviews.swift" "$APP/Contents/Resources/preview" "$(cd "$DIR/.." && pwd)" || true
 
 echo "built: $APP"
 echo "run:   open \"$APP\"    (or: \"$BIN\")"

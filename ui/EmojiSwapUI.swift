@@ -12,7 +12,17 @@ import AppKit
 import CoreText
 
 // Absolute path to the emojiswap project (this is a personal tool for one machine).
-let PROJECT_DIR = "/Users/ieb/Vibism/emojiswap"
+// Repo root: $EMOJISWAP_DIR if set, else two levels up from the .app bundle — it
+// ships at <repo>/ui/EmojiSwap.app, so the binary finds the CLI, fonts cache and
+// system-font scripts in any clone. (Falls back to CWD for a raw, un-bundled run.)
+let PROJECT_DIR: String = {
+    if let env = ProcessInfo.processInfo.environment["EMOJISWAP_DIR"], !env.isEmpty { return env }
+    let bundle = Bundle.main.bundlePath
+    if bundle.hasSuffix(".app") {
+        return ((bundle as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+    }
+    return FileManager.default.currentDirectoryPath
+}()
 
 // ---- emoji sets -------------------------------------------------------------
 struct EmojiSet: Identifiable {

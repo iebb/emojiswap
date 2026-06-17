@@ -5,7 +5,8 @@
 import AppKit
 import CoreText
 
-let PROJECT = "/Users/ieb/Vibism/emojiswap"
+// Repo root for source fonts: arg[2] (passed by build.sh), else the current dir.
+let PROJECT = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : FileManager.default.currentDirectoryPath
 let DEFAULT = "😀👋🐖🍕🚗⚽💡\u{2764}🇸🇲"   // must match DEFAULT_PREVIEW in EmojiSwapUI.swift (bare U+2764 heart)
 let PX = 180
 

@@ -1,0 +1,49 @@
+name: app (macOS build)
+
+# Builds EmojiSwap.app on macOS and publishes it as a downloadable artifact +
+# rolling `app` prerelease asset. The app ships at <repo>/ui/EmojiSwap.app and
+# finds the CLI / fonts / scripts relative to itself (or via $EMOJISWAP_DIR).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "emojiswap.py"
+      - "system-font/**"
+      - ".github/workflows/app.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest        # Apple Silicon → arm64 build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build EmojiSwap.app
+        run: |
+          chmod +x emojiswap ui/build.sh
+          ui/build.sh
+
+      - name: Package (ad-hoc sign + zip)
+        run: |
+          codesign --force --deep --sign - ui/EmojiSwap.app || true
+          ditto -c -k --keepParent ui/EmojiSwap.app EmojiSwap-macOS-arm64.zip
+          echo "sha256: $(shasum -a 256 EmojiSwap-macOS-arm64.zip | awk '{print $1}')"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmojiSwap-macOS-arm64
+          path: EmojiSwap-macOS-arm64.zip
+
+      - name: Publish to rolling 'app' prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view app >/dev/null 2>&1 || \
+            gh release create app --prerelease --title "EmojiSwap.app (latest build)" \
+              --notes $'Rolling macOS build of EmojiSwap.app (arm64, ad-hoc signed — right-click → **Open** on first launch).\n\nThe app finds its CLI/fonts/scripts relative to itself: unzip it into a clone of this repo at `ui/EmojiSwap.app`, or set `EMOJISWAP_DIR` to your clone path.'
+          gh release upload app EmojiSwap-macOS-arm64.zip --clobber
