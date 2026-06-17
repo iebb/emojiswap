@@ -46,4 +46,7 @@ jobs:
           gh release view app >/dev/null 2>&1 || \
             gh release create app --prerelease --title "EmojiSwap.app (latest build)" \
               --notes $'Rolling macOS build of EmojiSwap.app (arm64, ad-hoc signed — right-click → **Open** on first launch).\n\nThe app finds its CLI/fonts/scripts relative to itself: unzip it into a clone of this repo at `ui/EmojiSwap.app`, or set `EMOJISWAP_DIR` to your clone path.'
-          gh release upload app EmojiSwap-macOS-arm64.zip --clobber
+          # retry: a freshly-created release 404s on the uploads endpoint until it propagates
+          for i in 1 2 3 4 5; do
+            gh release upload app EmojiSwap-macOS-arm64.zip --clobber && break || sleep 6
+          done
