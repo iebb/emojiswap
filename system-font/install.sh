@@ -19,7 +19,7 @@ set -euo pipefail
 
 SYS_FONT="/System/Library/Fonts/Apple Color Emoji.ttc"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="$SCRIPT_DIR/backup"
+BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/backup}"   # overridable so a bundled copy backs up to a writable dir
 BACKUP="$BACKUP_DIR/Apple Color Emoji.ttc.orig"
 
 red()  { printf '\033[31m%s\033[0m\n' "$*"; }

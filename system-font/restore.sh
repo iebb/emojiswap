@@ -7,7 +7,8 @@ set -euo pipefail
 
 SYS_FONT="/System/Library/Fonts/Apple Color Emoji.ttc"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP="$SCRIPT_DIR/backup/Apple Color Emoji.ttc.orig"
+BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/backup}"   # overridable (matches install.sh)
+BACKUP="$BACKUP_DIR/Apple Color Emoji.ttc.orig"
 
 red() { printf '\033[31m%s\033[0m\n' "$*"; }
 grn() { printf '\033[32m%s\033[0m\n' "$*"; }

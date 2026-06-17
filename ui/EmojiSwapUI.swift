@@ -32,14 +32,34 @@ struct EmojiSet: Identifiable {
     let previewFont: String // path to a renderable build, for the live preview
 }
 
-// Previews load from the on-demand download cache (PROJECT_DIR/fonts/<key>.ttf),
-// fetched from the emojifonts release the first time each set is needed.
-func fontCache(_ key: String) -> String { "\(PROJECT_DIR)/fonts/\(key).ttf" }
-let APPLE_BACKUP = "\(PROJECT_DIR)/system-font/backup/Apple Color Emoji.ttc.orig"
+// Standalone, no Python: everything downloads to a user cache; backups + the
+// bundled installer scripts live in the app's own directories. Nothing needs the
+// repo (except blend, which still wants the dev CLI — see applyBlend).
 let RELEASE_BASE = "https://github.com/iebb/emojifonts/releases/download/latest"
+let SYSTEM_EMOJI = "/System/Library/Fonts/Apple Color Emoji.ttc"
+@discardableResult func mkdirp(_ p: String) -> String {
+    try? FileManager.default.createDirectory(atPath: p, withIntermediateDirectories: true); return p
+}
+let CACHE = mkdirp("\(NSHomeDirectory())/Library/Caches/EmojiSwap")
+let APP_SUPPORT = mkdirp("\(NSHomeDirectory())/Library/Application Support/EmojiSwap")
+let APPLE_BACKUP = "\(APP_SUPPORT)/Apple Color Emoji.ttc.orig"   // where the installer backs up
+let USER_FONTS = "\(NSHomeDirectory())/Library/Fonts"
 
-// Fetch a set's font from the emojifonts release into the on-demand cache —
-// native curl, no Python. No-op if already cached.
+func fontCache(_ key: String) -> String { "\(CACHE)/\(key).ttf" }
+func userFontPath(_ key: String) -> String { "\(USER_FONTS)/EmojiSwap-\(key).ttf" }
+func appleFontPath() -> String { FileManager.default.fileExists(atPath: APPLE_BACKUP) ? APPLE_BACKUP : SYSTEM_EMOJI }
+
+// Resolve a bundled helper script (install.sh / restore.sh), else fall back to the repo.
+func bundledScript(_ name: String) -> String {
+    if let res = Bundle.main.resourcePath {
+        let p = "\(res)/scripts/\(name)"
+        if FileManager.default.fileExists(atPath: p) { return p }
+    }
+    return "\(PROJECT_DIR)/system-font/\(name)"
+}
+
+// Fetch a set's font from the emojifonts release into the cache — native curl,
+// no Python. No-op if already cached.
 @discardableResult
 func ensureFont(_ key: String) -> Bool {
     let dst = fontCache(key)
@@ -49,10 +69,32 @@ func ensureFont(_ key: String) -> Bool {
     return FileManager.default.fileExists(atPath: dst)
 }
 
+// Install a set as an ordinary user font under its own name (native; no SIP/admin).
+@discardableResult
+func installAsFont(_ key: String) -> Bool {
+    guard ensureFont(key) else { return false }
+    _ = mkdirp(USER_FONTS)
+    let dst = userFontPath(key)
+    try? FileManager.default.removeItem(atPath: dst)
+    do { try FileManager.default.copyItem(atPath: fontCache(key), toPath: dst) } catch { return false }
+    _ = run("/usr/bin/killall", ["fontd"])
+    return true
+}
+
+// Remove every EmojiSwap-installed user font.
+func uninstallUserFonts() {
+    if let files = try? FileManager.default.contentsOfDirectory(atPath: USER_FONTS) {
+        for f in files where f.hasPrefix("EmojiSwap-") && f.hasSuffix(".ttf") {
+            try? FileManager.default.removeItem(atPath: "\(USER_FONTS)/\(f)")
+        }
+    }
+    _ = run("/usr/bin/killall", ["fontd"])
+}
+
 // One per emojifonts release font (+ Apple). Names/notes are fallbacks — the live
 // manifest overrides notes with each font's license + Emoji version.
 let SETS: [EmojiSet] = [
-    EmojiSet(id: "apple",     name: "Apple (original)", note: "macOS default", previewFont: APPLE_BACKUP),
+    EmojiSet(id: "apple",     name: "Apple (original)", note: "macOS default", previewFont: appleFontPath()),
     EmojiSet(id: "noto",      name: "Google Noto",          note: "Apache-2.0 / OFL", previewFont: fontCache("noto")),
     EmojiSet(id: "twemoji",   name: "Twemoji",              note: "jdecked · CC BY 4.0", previewFont: fontCache("twemoji")),
     EmojiSet(id: "openmoji",  name: "OpenMoji",             note: "CC BY-SA 4.0",     previewFont: fontCache("openmoji")),
@@ -709,33 +751,41 @@ struct ContentView: View {
         appendLog("\n▶ Applying \(set) [\(m.rawValue)] …")
         DispatchQueue.global().async {
             if m == .system {
-                // Download the prebuilt drop-in `<set>.ttc` from the emojifonts release
-                // (no local Python build), then install it system-wide via the bash helper.
-                let cache = "\(NSHomeDirectory())/Library/Caches/EmojiSwap"
-                _ = run("/bin/mkdir", ["-p", cache])
-                let dst = "\(cache)/\(set).ttc"
+                // Download the prebuilt drop-in `<set>.ttc` from the emojifonts release,
+                // then install it system-wide via the bundled bash helper (no Python).
+                let dst = "\(CACHE)/\(set).ttc"
                 appendLog("downloading \(set).ttc from the emojifonts release …")
-                let dl = run("/usr/bin/curl", ["-fL", "--retry", "3", "-m", "180", "-o", dst,
-                    "\(RELEASE_BASE)/\(set).ttc"])
+                let dl = run("/usr/bin/curl", ["-fL", "--retry", "3", "-m", "180", "--create-dirs",
+                    "-o", dst, "\(RELEASE_BASE)/\(set).ttc"])
                 if dl.code != 0 {
                     appendLog("✗ couldn't download \(set).ttc (code \(dl.code)). It may not be published yet.")
                 } else {
-                    let i = runAdmin("'\(PROJECT_DIR)/system-font/install.sh' --yes '\(dst)'")
+                    let i = runAdmin("BACKUP_DIR='\(APP_SUPPORT)' /bin/bash '\(bundledScript("install.sh"))' --yes '\(dst)'")
                     appendLog(i.out)
                     appendLog(i.code == 0
                         ? "✅ Installed system-wide. REBOOT to see it (this app can't reboot for you)."
                         : "✗ install failed (code \(i.code)).")
                 }
             } else {
-                let r = run("\(PROJECT_DIR)/emojiswap", ["set", set], cwd: PROJECT_DIR)
-                appendLog(r.out)
+                // Install the set as a user font under its own name (native copy).
+                appendLog("installing \(set) as a user font …")
+                let ok = installAsFont(set)
+                appendLog(ok
+                    ? "✅ Installed “\(set)” as a font — pick it in an app's Font menu (give fontd a few seconds). Doesn't change typed emoji."
+                    : "✗ couldn't download/install \(set).")
             }
             DispatchQueue.main.async { busy = false }
         }
     }
 
-    // Blend by category → one sbix font, then install via the chosen route.
+    // Blend by category needs the font-building toolchain (the Python CLI), so it's
+    // only available in a dev checkout — not in the standalone app.
     private func applyBlend() {
+        let cli = "\(PROJECT_DIR)/emojiswap"
+        guard FileManager.default.isExecutableFile(atPath: cli) else {
+            appendLog("\n✗ Blend builds a custom font and needs the emojiswap CLI (dev install). Run the app from a clone of the repo, or set EMOJISWAP_DIR.")
+            return
+        }
         busy = true
         let m = mode
         var args = ["blend", "default=\(blendDefault)"]
@@ -745,12 +795,12 @@ struct ContentView: View {
         if m == .user { args.append("--user") }
         appendLog("\n▶ Blending [\(m.rawValue)] " + args.dropFirst().joined(separator: " ") + " …")
         DispatchQueue.global().async {
-            let b = run("\(PROJECT_DIR)/emojiswap", args, cwd: PROJECT_DIR)
+            let b = run(cli, args, cwd: PROJECT_DIR)
             appendLog(b.out)
             if b.code != 0 {
                 appendLog("✗ blend failed (code \(b.code)).")
             } else if m == .system {
-                let i = runAdmin("'\(PROJECT_DIR)/system-font/install.sh' --yes")
+                let i = runAdmin("BACKUP_DIR='\(APP_SUPPORT)' /bin/bash '\(bundledScript("install.sh"))' --yes '\(PROJECT_DIR)/system-font/Apple Color Emoji.ttc'")
                 appendLog(i.out)
                 appendLog(i.code == 0
                     ? "✅ Installed system-wide. REBOOT to see it (this app can't reboot for you)."
@@ -766,12 +816,12 @@ struct ContentView: View {
         appendLog("\n▶ Reverting [\(m.rawValue)] …")
         DispatchQueue.global().async {
             if m == .system {
-                let r = runAdmin("'\(PROJECT_DIR)/system-font/restore.sh'")
+                let r = runAdmin("BACKUP_DIR='\(APP_SUPPORT)' /bin/bash '\(bundledScript("restore.sh"))'")
                 appendLog(r.out)
-                appendLog(r.code == 0 ? "✅ Restored. REBOOT to apply." : "✗ restore failed (code \(r.code)).")
+                appendLog(r.code == 0 ? "✅ Restored. REBOOT to apply." : "✗ restore failed (code \(r.code)). (Nothing to restore if you never did a system swap.)")
             } else {
-                let r = run("\(PROJECT_DIR)/emojiswap", ["revert"], cwd: PROJECT_DIR)
-                appendLog(r.out)
+                uninstallUserFonts()
+                appendLog("✅ Removed EmojiSwap user fonts.")
             }
             DispatchQueue.main.async { busy = false }
         }

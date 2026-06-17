@@ -15,6 +15,11 @@ swiftc -O -parse-as-library \
 # app icon: blended side-view pig 🐖 (Noto front half + realistic back half, blend-pig.png)
 [ -f "$DIR/AppIcon.icns" ] && cp "$DIR/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
+# bundle the privileged installer scripts so the system-wide swap is self-contained
+mkdir -p "$APP/Contents/Resources/scripts"
+cp "$DIR/../system-font/install.sh" "$DIR/../system-font/restore.sh" "$APP/Contents/Resources/scripts/"
+chmod +x "$APP/Contents/Resources/scripts/"*.sh
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
