@@ -1,0 +1,26 @@
+.venv/
+fonts/
+verify.png
+state.json
+__pycache__/
+*.pyc
+# generated system-font artifacts (keep the scripts + README)
+system-font/Apple Color Emoji.ttc
+system-font/backup/
+# built Swift UI app (keep the source + build.sh)
+ui/EmojiSwap.app/
+# twemoji-build artifacts (keep build.sh, workflow, README)
+twemoji-build/work/
+twemoji-build/dist/
+# blend working data (emoji-test.txt auto-downloads; renders are regenerated)
+data/
+
+# VM test scaffolding (not part of emojiswap)
+vm-test/
+# colrv0-build venv + outputs (keep build.sh, README, .github/)
+colrv0-build/work/
+colrv0-build/dist/
+# safety net — fonts/ttc are downloaded on demand, never committed
+*.ttf
+*.ttc
+.DS_Store

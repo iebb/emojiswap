@@ -1,0 +1,38 @@
+name: Build Twemoji (jdecked) → COLRv0
+
+# Standalone CI: builds a macOS-renderable Twemoji font from jdecked/twemoji
+# source and publishes it as a release asset + artifact.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, to track jdecked/twemoji updates
+  push:
+    branches: [main]
+    paths: ["build.sh", ".github/workflows/build.yml"]
+
+permissions:
+  contents: write   # for the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build Twemoji.ttf
+        run: bash build.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Twemoji-COLRv0
+          path: dist/Twemoji.ttf
+      - name: Publish/refresh release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: twemoji-latest
+          name: Twemoji (jdecked) — latest build
+          files: dist/Twemoji.ttf
